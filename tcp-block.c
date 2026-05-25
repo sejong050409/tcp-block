@@ -149,23 +149,6 @@ void build_tcp_header(tcp_header *tcp,
     tcp->urgent = 0;
 }
 
-void raw_send(int raw_sock, uint8_t *packet, int packet_len, uint32_t dst_ip) {
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = dst_ip;
-
-    if (sendto(raw_sock,
-               packet,
-               packet_len,
-               0,
-               (struct sockaddr *)&addr,
-               sizeof(addr)) < 0) {
-        perror("sendto");
-    }
-}
-
 void send_forward_rst(pcap_t *handle,
                       const uint8_t *org_packet,
                       ip_header *org_ip,
@@ -316,8 +299,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("tcp-block start!!\n");
-    printf("interface : %s\n", dev);
-    printf("pattern   : %s\n", pattern);
 
     while (1) {
         struct pcap_pkthdr *header;
@@ -350,8 +331,16 @@ int main(int argc, char *argv[]) {
         int tcp_header_len = ((tcp->offset_reserved >> 4) & 0x0f) * 4;
         int ip_total_len = ntohs(ip->tot_len);
         int payload_len = ip_total_len - ip_header_len - tcp_header_len;
-
-        if (payload_len <= 0) {
+	
+	if (ntohs(tcp->src_port) != 80 && ntohs(tcp->dst_port) != 80) {
+		continue;
+	}
+	
+	if (header->caplen < sizeof(ethernet_header) + ip_header_len + tcp_header_len + payload_len) {
+		continue;
+	}        
+	
+	if (payload_len <= 0) {
             continue;
         }
 
@@ -363,7 +352,7 @@ int main(int argc, char *argv[]) {
             dst.s_addr = ip->dst_ip;
 
             printf("detected pattern\n");
-            printf("    %s:%d -> ",
+            printf("%s:%d -> ",
                    inet_ntoa(src),
                    ntohs(tcp->src_port));
 
